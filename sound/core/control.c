@@ -897,18 +897,32 @@ static int snd_ctl_elem_read(struct snd_card *card,
 	struct snd_kcontrol *kctl;
 	struct snd_kcontrol_volatile *vd;
 	unsigned int index_offset;
+	int err;
+
+	err = snd_power_wait(card, SNDRV_CTL_POWER_D0);
+	if (err < 0)
+		return err;
+
+	down_read(&card->controls_rwsem);
 
 	kctl = snd_ctl_find_id(card, &control->id);
-	if (kctl == NULL)
-		return -ENOENT;
+	if (kctl == NULL) {
+		err = -ENOENT;
+		goto end;
+	}
 
 	index_offset = snd_ctl_get_ioff(kctl, &control->id);
 	vd = &kctl->vd[index_offset];
-	if (!(vd->access & SNDRV_CTL_ELEM_ACCESS_READ) && kctl->get == NULL)
-		return -EPERM;
+	if (!(vd->access & SNDRV_CTL_ELEM_ACCESS_READ) && kctl->get == NULL) {
+		err = -EPERM;
+		goto end;
+	}
 
 	snd_ctl_build_ioff(&control->id, kctl, index_offset);
-	return kctl->get(kctl, control);
+	err = kctl->get(kctl, control);
+end:
+	up_read(&card->controls_rwsem);
+	return err;
 }
 
 static int snd_ctl_elem_read_user(struct snd_card *card,
@@ -921,13 +935,7 @@ static int snd_ctl_elem_read_user(struct snd_card *card,
 	if (IS_ERR(control))
 		return PTR_ERR(control);
 
-	result = snd_power_wait(card, SNDRV_CTL_POWER_D0);
-	if (result < 0)
-		goto error;
-
-	down_read(&card->controls_rwsem);
 	result = snd_ctl_elem_read(card, control);
-	up_read(&card->controls_rwsem);
 	if (result < 0)
 		goto error;
 
