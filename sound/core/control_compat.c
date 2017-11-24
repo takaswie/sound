@@ -422,7 +422,7 @@ static int snd_ctl_elem_list_compat(struct snd_ctl_file *ctl_file,
 	if (get_user(ptr, &data32->pids) ||
 	    put_user(compat_ptr(ptr), &data->pids))
 		return -EFAULT;
-	err = snd_ctl_elem_list(ctl_file, data);
+	err = snd_ctl_elem_list_user(ctl_file, data);
 	if (err < 0)
 		return err;
 	/* copy the result */
