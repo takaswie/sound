@@ -443,11 +443,25 @@ enum {
 #endif /* CONFIG_X86_X32 */
 };
 
-static inline long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd, unsigned long arg)
+static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
+				 unsigned long arg)
 {
+	static const struct {
+		unsigned int cmd;
+		int (*deserialize)(struct snd_ctl_file *ctl_file, void *dst,
+				   void *src);
+		int (*func)(struct snd_ctl_file *ctl_file, void *buf);
+		int (*serialize)(struct snd_ctl_file *ctl_file, void *dst,
+				 void *src);
+		unsigned int orig_cmd;
+	} handlers[] = {
+		{ 0, NULL, NULL, NULL, 0, },
+	};
 	struct snd_ctl_file *ctl;
-	struct snd_kctl_ioctl *p;
 	void __user *argp = compat_ptr(arg);
+	void *buf, *data;
+	unsigned int size;
+	int i;
 	int err;
 
 	ctl = file->private_data;
@@ -455,18 +469,6 @@ static inline long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd, uns
 		return -ENXIO;
 
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_PVERSION:
-	case SNDRV_CTL_IOCTL_CARD_INFO:
-	case SNDRV_CTL_IOCTL_SUBSCRIBE_EVENTS:
-	case SNDRV_CTL_IOCTL_POWER:
-	case SNDRV_CTL_IOCTL_POWER_STATE:
-	case SNDRV_CTL_IOCTL_ELEM_LOCK:
-	case SNDRV_CTL_IOCTL_ELEM_UNLOCK:
-	case SNDRV_CTL_IOCTL_ELEM_REMOVE:
-	case SNDRV_CTL_IOCTL_TLV_READ:
-	case SNDRV_CTL_IOCTL_TLV_WRITE:
-	case SNDRV_CTL_IOCTL_TLV_COMMAND:
-		return snd_ctl_ioctl(file, cmd, (unsigned long)argp);
 	case SNDRV_CTL_IOCTL_ELEM_LIST32:
 		return snd_ctl_elem_list_compat(ctl->card, argp);
 	case SNDRV_CTL_IOCTL_ELEM_INFO32:
@@ -487,16 +489,65 @@ static inline long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd, uns
 #endif /* CONFIG_X86_X32 */
 	}
 
-	down_read(&snd_ioctl_rwsem);
-	list_for_each_entry(p, &snd_control_compat_ioctls, list) {
-		if (p->fioctl) {
-			err = p->fioctl(ctl->card, ctl, cmd, arg);
-			if (err != -ENOIOCTLCMD) {
-				up_read(&snd_ioctl_rwsem);
-				return err;
+	for (i = 0; i < ARRAY_SIZE(handlers); ++i) {
+		if (handlers[i].cmd == cmd)
+			break;
+	}
+	if (i == ARRAY_SIZE(handlers)) {
+		struct snd_kctl_ioctl *p;
+
+		down_read(&snd_ioctl_rwsem);
+		list_for_each_entry(p, &snd_control_compat_ioctls, list) {
+			if (p->fioctl) {
+				err = p->fioctl(ctl->card, ctl, cmd, arg);
+				if (err != -ENOIOCTLCMD) {
+					up_read(&snd_ioctl_rwsem);
+					return err;
+				}
 			}
 		}
+		up_read(&snd_ioctl_rwsem);
+
+		return snd_ctl_ioctl(file, cmd, (unsigned long)compat_ptr(arg));
 	}
-	up_read(&snd_ioctl_rwsem);
-	return -ENOIOCTLCMD;
+
+	/* Allocate a buffer to convert layout of structure for native ABI. */
+	buf = kzalloc(_IOC_SIZE(handlers[i].orig_cmd), GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	/* Allocate an alternative buffer to copy from/to user space. */
+	size = _IOC_SIZE(handlers[i].cmd);
+	data = kzalloc(size, GFP_KERNEL);
+	if (!data) {
+		kfree(buf);
+		return -ENOMEM;
+	}
+
+	if (handlers[i].cmd & IOC_IN) {
+		if (copy_from_user(data, compat_ptr(arg), size)) {
+			err = -EFAULT;
+			goto end;
+		}
+	}
+
+	err = handlers[i].deserialize(ctl, buf, data);
+	if (err < 0)
+		goto end;
+
+	err = handlers[i].func(ctl, buf);
+	if (err < 0)
+		goto end;
+
+	err = handlers[i].serialize(ctl, data, buf);
+	if (err >= 0) {
+		if (handlers[i].cmd & IOC_OUT) {
+			if (copy_to_user(compat_ptr(arg), data, size))
+				err = -EFAULT;
+		}
+	}
+end:
+	kfree(data);
+	kfree(buf);
+	return err;
 }
