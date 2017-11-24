@@ -719,6 +719,14 @@ static int ctl_compat_ioctl_elem_info_32(struct snd_ctl_file *ctl_file,
 	return snd_ctl_elem_info(ctl_file, info);
 }
 
+static int ctl_compat_ioctl_elem_add_32(struct snd_ctl_file *ctl_file,
+					void *buf)
+{
+	struct snd_ctl_elem_info *info = buf;
+
+	return snd_ctl_elem_add(ctl_file, info);
+}
+
 enum {
 	SNDRV_CTL_IOCTL_ELEM_LIST_32 =
 				_IOWR('U', 0x10, struct snd_ctl_elem_list_32),
@@ -726,7 +734,8 @@ enum {
 				_IOWR('U', 0x11, struct snd_ctl_elem_info_32),
 	SNDRV_CTL_IOCTL_ELEM_READ32 = _IOWR('U', 0x12, struct snd_ctl_elem_value32),
 	SNDRV_CTL_IOCTL_ELEM_WRITE32 = _IOWR('U', 0x13, struct snd_ctl_elem_value32),
-	SNDRV_CTL_IOCTL_ELEM_ADD32 = _IOWR('U', 0x17, struct snd_ctl_elem_info32),
+	SNDRV_CTL_IOCTL_ELEM_ADD_32 =
+				_IOWR('U', 0x17, struct snd_ctl_elem_info_32),
 	SNDRV_CTL_IOCTL_ELEM_REPLACE32 = _IOWR('U', 0x18, struct snd_ctl_elem_info32),
 #ifdef CONFIG_X86_X32
 	SNDRV_CTL_IOCTL_ELEM_READ_X32 = _IOWR('U', 0x12, struct snd_ctl_elem_value_x32),
@@ -760,6 +769,13 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 			serialize_to_elem_info_32,
 			SNDRV_CTL_IOCTL_ELEM_INFO,
 		},
+		{
+			SNDRV_CTL_IOCTL_ELEM_ADD_32,
+			deserialize_from_elem_info_32,
+			ctl_compat_ioctl_elem_add_32,
+			serialize_to_elem_info_32,
+			SNDRV_CTL_IOCTL_ELEM_ADD,
+		},
 	};
 	struct snd_ctl_file *ctl;
 	void __user *argp = compat_ptr(arg);
@@ -777,8 +793,6 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		return snd_ctl_elem_read_user_compat(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_WRITE32:
 		return snd_ctl_elem_write_user_compat(ctl, argp);
-	case SNDRV_CTL_IOCTL_ELEM_ADD32:
-		return snd_ctl_elem_add_compat(ctl, argp, 0);
 	case SNDRV_CTL_IOCTL_ELEM_REPLACE32:
 		return snd_ctl_elem_add_compat(ctl, argp, 1);
 #ifdef CONFIG_X86_X32
@@ -844,6 +858,13 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		if (handlers[i].cmd & IOC_OUT) {
 			if (copy_to_user(compat_ptr(arg), data, size))
 				err = -EFAULT;
+		}
+	}
+
+	if (err < 0) {
+		if (cmd == SNDRV_CTL_IOCTL_ELEM_ADD_32) {
+			struct snd_ctl_elem_info *info = buf;
+			snd_ctl_remove_user_ctl(ctl, &info->id);
 		}
 	}
 end:
