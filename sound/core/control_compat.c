@@ -199,6 +199,115 @@ static int serialize_to_elem_info_32(struct snd_ctl_file *ctl_file, void *dst,
 	return 0;
 }
 
+/*
+ * Unfortunately, unlike the above structure, total size of '.id' and
+ * '.indirect' is not multiples of 8 bytes (it's 68 bytes). Except for System V
+ * ABI for i386 architecture, 'double-word' type has 8 bytes alignment. For such
+ * architectures, 32 bit padding is needed.
+ */
+struct snd_ctl_elem_value_32 {
+	struct snd_ctl_elem_id id;
+	u32 indirect:1;
+	u64 padding1:63;		/* For 8 bytes alignment of '.value'. */
+	union {
+		s32 integer[128];	/* long on ILP32. */
+		u8 data[512];
+		s64 integer64[64];
+	} value;
+	struct {
+		s32 tv_sec;		/* long on ILP32. */
+		s32 tv_nsec;		/* long on ILP32. */
+	} tstamp;
+	u8 reserved[128 - sizeof(s32) - sizeof(s32)];
+} __packed;
+
+static int get_type(struct snd_ctl_file *ctl_file, struct snd_ctl_elem_id *id,
+		    snd_ctl_elem_type_t *type)
+{
+	struct snd_ctl_elem_info *info;
+	int err;
+
+	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	if (!info)
+		return -ENOMEM;
+	info->id = *id;
+
+	err = snd_ctl_elem_info(ctl_file, info);
+	if (err >= 0)
+		*type = info->type;
+
+	kfree(info);
+	return err;
+}
+
+static int __maybe_unused deserialize_from_elem_value_32(
+			struct snd_ctl_file *ctl_file, void *dst, void *src)
+{
+	struct snd_ctl_elem_value *data = dst;
+	struct snd_ctl_elem_value_32 *data32 = src;
+	snd_ctl_elem_type_t type;
+	int err;
+
+	err = get_type(ctl_file, &data32->id, &type);
+	if (err < 0)
+		return err;
+
+	data->id = data32->id;
+	data->indirect = data32->indirect;
+
+	if (type == SNDRV_CTL_ELEM_TYPE_BOOLEAN ||
+	    type == SNDRV_CTL_ELEM_TYPE_INTEGER) {
+		int i;
+		for (i = 0; i < 128; ++i) {
+			data->value.integer.value[i] =
+						(s64)data32->value.integer[i];
+		}
+		/* Drop rest of this field. */
+	} else {
+		/* Copy whole space of this field. */
+		memcpy(&data->value, &data32->value, sizeof(data->value));
+	}
+
+	data->tstamp.tv_sec = (s64)data32->tstamp.tv_sec;
+	data->tstamp.tv_nsec = (s64)data32->tstamp.tv_nsec;
+
+	return 0;
+}
+
+static int __maybe_unused serialize_to_elem_value_32(
+			struct snd_ctl_file *ctl_file, void *dst, void *src)
+{
+	struct snd_ctl_elem_value_32 *data32 = dst;
+	struct snd_ctl_elem_value *data = src;
+	snd_ctl_elem_type_t type;
+	int err;
+
+	err = get_type(ctl_file, &data->id, &type);
+	if (err < 0)
+		return err;
+
+	data32->id = data->id;
+	data32->indirect = data->indirect;
+
+	if (type == SNDRV_CTL_ELEM_TYPE_BOOLEAN ||
+	    type == SNDRV_CTL_ELEM_TYPE_INTEGER) {
+		int i;
+		for (i = 0; i < 128; ++i) {
+			data32->value.integer[i] =
+					(s32)data->value.integer.value[i];
+		}
+		/* Drop rest of this field. */
+	} else {
+		/* Copy whole space of this field. */
+		memcpy(&data32->value, &data->value, sizeof(data32->value));
+	}
+
+	data32->tstamp.tv_sec = (s32)data->tstamp.tv_sec;
+	data32->tstamp.tv_nsec = (s32)data->tstamp.tv_nsec;
+
+	return 0;
+}
+
 struct snd_ctl_elem_list32 {
 	u32 offset;
 	u32 space;
