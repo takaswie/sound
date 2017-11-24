@@ -1256,7 +1256,7 @@ static void snd_ctl_elem_user_free(struct snd_kcontrol *kcontrol)
 }
 
 static int snd_ctl_elem_add(struct snd_ctl_file *file,
-			    struct snd_ctl_elem_info *info, int replace)
+			    struct snd_ctl_elem_info *info)
 {
 	/* The capacity of struct snd_ctl_elem_value.value.*/
 	static const unsigned int value_sizes[] = {
@@ -1288,14 +1288,6 @@ static int snd_ctl_elem_add(struct snd_ctl_file *file,
 		return -EINVAL;
 	if (strnlen(info->id.name, sizeof(info->id.name)) >= sizeof(info->id.name))
 		return -EINVAL;
-
-	/* Delete a control to replace them if needed. */
-	if (replace) {
-		info->id.numid = 0;
-		err = snd_ctl_remove_user_ctl(file, &info->id);
-		if (err)
-			return err;
-	}
 
 	/*
 	 * The number of userspace controls are counted control by control,
@@ -1415,7 +1407,7 @@ static int snd_ctl_elem_add_user(struct snd_ctl_file *ctl_file,
 	if (IS_ERR(info))
 		return PTR_ERR(info);
 
-	err = snd_ctl_elem_add(ctl_file, info, 0);
+	err = snd_ctl_elem_add(ctl_file, info);
 	if (err >= 0) {
 		if (copy_to_user(arg, info, sizeof(*info))) {
 			snd_ctl_remove_user_ctl(ctl_file, &info->id);
@@ -1425,6 +1417,26 @@ static int snd_ctl_elem_add_user(struct snd_ctl_file *ctl_file,
 
 	kfree(info);
 	return err;
+}
+
+static int snd_ctl_elem_replace(struct snd_ctl_file *ctl_file,
+				struct snd_ctl_elem_info *info)
+{
+	int err;
+
+	if (!*info->id.name)
+		return -EINVAL;
+	if (strnlen(info->id.name, sizeof(info->id.name)) >=
+							sizeof(info->id.name))
+		return -EINVAL;
+
+	/* Delete an element set to replace them. */
+	info->id.numid = 0;
+	err = snd_ctl_remove_user_ctl(ctl_file, &info->id);
+	if (err < 0)
+		return err;
+
+	return snd_ctl_elem_add(ctl_file, info);
 }
 
 static int snd_ctl_elem_replace_user(struct snd_ctl_file *ctl_file,
@@ -1437,7 +1449,7 @@ static int snd_ctl_elem_replace_user(struct snd_ctl_file *ctl_file,
 	if (IS_ERR(info))
 		return PTR_ERR(info);
 
-	err = snd_ctl_elem_add(ctl_file, info, 1);
+	err = snd_ctl_elem_replace(ctl_file, info);
 	if (err >= 0) {
 		if (copy_to_user(arg, info, sizeof(*info))) {
 			snd_ctl_remove_user_ctl(ctl_file, &info->id);

@@ -792,7 +792,10 @@ static int snd_ctl_elem_add_compat(struct snd_ctl_file *file,
 	default:
 		break;
 	}
-	err = snd_ctl_elem_add(file, data, replace);
+	if (!replace)
+		err = snd_ctl_elem_add(file, data);
+	else
+		err = snd_ctl_elem_replace(file, data);
  error:
 	kfree(data);
 	return err;
