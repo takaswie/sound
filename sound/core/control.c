@@ -1405,23 +1405,26 @@ static int snd_ctl_elem_add(struct snd_ctl_file *file,
 	return 0;
 }
 
-static int snd_ctl_elem_add_user(struct snd_ctl_file *file,
-				 struct snd_ctl_elem_info __user *_info, int replace)
+static int snd_ctl_elem_add_user(struct snd_ctl_file *ctl_file,
+				 void __user *arg, int replace)
 {
-	struct snd_ctl_elem_info info;
+	struct snd_ctl_elem_info *info;
 	int err;
 
-	if (copy_from_user(&info, _info, sizeof(info)))
-		return -EFAULT;
-	err = snd_ctl_elem_add(file, &info, replace);
-	if (err < 0)
-		return err;
-	if (copy_to_user(_info, &info, sizeof(info))) {
-		snd_ctl_remove_user_ctl(file, &info.id);
-		return -EFAULT;
+	info = memdup_user(arg, sizeof(*info));
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+
+	err = snd_ctl_elem_add(ctl_file, info, replace);
+	if (err >= 0) {
+		if (copy_to_user(arg, info, sizeof(*info))) {
+			snd_ctl_remove_user_ctl(ctl_file, &info->id);
+			err = -EFAULT;
+		}
 	}
 
-	return 0;
+	kfree(info);
+	return err;
 }
 
 static int snd_ctl_elem_remove(struct snd_ctl_file *file,
