@@ -894,7 +894,7 @@ static int snd_ctl_elem_info_user(struct snd_ctl_file *ctl, void __user *arg)
 	return err;
 }
 
-static int snd_ctl_elem_read(struct snd_card *card,
+static int snd_ctl_elem_read(struct snd_ctl_file *ctl_file,
 			     struct snd_ctl_elem_value *control)
 {
 	struct snd_kcontrol *kctl;
@@ -902,13 +902,13 @@ static int snd_ctl_elem_read(struct snd_card *card,
 	unsigned int index_offset;
 	int err;
 
-	err = snd_power_wait(card, SNDRV_CTL_POWER_D0);
+	err = snd_power_wait(ctl_file->card, SNDRV_CTL_POWER_D0);
 	if (err < 0)
 		return err;
 
-	down_read(&card->controls_rwsem);
+	down_read(&ctl_file->card->controls_rwsem);
 
-	kctl = snd_ctl_find_id(card, &control->id);
+	kctl = snd_ctl_find_id(ctl_file->card, &control->id);
 	if (kctl == NULL) {
 		err = -ENOENT;
 		goto end;
@@ -924,11 +924,11 @@ static int snd_ctl_elem_read(struct snd_card *card,
 	snd_ctl_build_ioff(&control->id, kctl, index_offset);
 	err = kctl->get(kctl, control);
 end:
-	up_read(&card->controls_rwsem);
+	up_read(&ctl_file->card->controls_rwsem);
 	return err;
 }
 
-static int snd_ctl_elem_read_user(struct snd_card *card,
+static int snd_ctl_elem_read_user(struct snd_ctl_file *ctl_file,
 				  struct snd_ctl_elem_value __user *_control)
 {
 	struct snd_ctl_elem_value *control;
@@ -938,7 +938,7 @@ static int snd_ctl_elem_read_user(struct snd_card *card,
 	if (IS_ERR(control))
 		return PTR_ERR(control);
 
-	result = snd_ctl_elem_read(card, control);
+	result = snd_ctl_elem_read(ctl_file, control);
 	if (result < 0)
 		goto error;
 
@@ -1581,7 +1581,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 	case SNDRV_CTL_IOCTL_ELEM_INFO:
 		return snd_ctl_elem_info_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_READ:
-		return snd_ctl_elem_read_user(card, argp);
+		return snd_ctl_elem_read_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_WRITE:
 		return snd_ctl_elem_write_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_LOCK:
