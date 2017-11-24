@@ -431,66 +431,6 @@ struct snd_ctl_elem_info32 {
 	unsigned char reserved[64];
 } __attribute__((packed));
 
-static int snd_ctl_elem_info_compat(struct snd_ctl_file *ctl,
-				    struct snd_ctl_elem_info32 __user *data32)
-{
-	struct snd_ctl_elem_info *data;
-	int err;
-
-	data = kzalloc(sizeof(*data), GFP_KERNEL);
-	if (! data)
-		return -ENOMEM;
-
-	err = -EFAULT;
-	/* copy id */
-	if (copy_from_user(&data->id, &data32->id, sizeof(data->id)))
-		goto error;
-	/* we need to copy the item index.
-	 * hope this doesn't break anything..
-	 */
-	if (get_user(data->value.enumerated.item, &data32->value.enumerated.item))
-		goto error;
-
-	err = snd_ctl_elem_info(ctl, data);
-	if (err < 0)
-		goto error;
-	/* restore info to 32bit */
-	err = -EFAULT;
-	/* id, type, access, count */
-	if (copy_to_user(&data32->id, &data->id, sizeof(data->id)) ||
-	    copy_to_user(&data32->type, &data->type, 3 * sizeof(u32)))
-		goto error;
-	if (put_user(data->owner, &data32->owner))
-		goto error;
-	switch (data->type) {
-	case SNDRV_CTL_ELEM_TYPE_BOOLEAN:
-	case SNDRV_CTL_ELEM_TYPE_INTEGER:
-		if (put_user(data->value.integer.min, &data32->value.integer.min) ||
-		    put_user(data->value.integer.max, &data32->value.integer.max) ||
-		    put_user(data->value.integer.step, &data32->value.integer.step))
-			goto error;
-		break;
-	case SNDRV_CTL_ELEM_TYPE_INTEGER64:
-		if (copy_to_user(&data32->value.integer64,
-				 &data->value.integer64,
-				 sizeof(data->value.integer64)))
-			goto error;
-		break;
-	case SNDRV_CTL_ELEM_TYPE_ENUMERATED:
-		if (copy_to_user(&data32->value.enumerated,
-				 &data->value.enumerated,
-				 sizeof(data->value.enumerated)))
-			goto error;
-		break;
-	default:
-		break;
-	}
-	err = 0;
- error:
-	kfree(data);
-	return err;
-}
-
 /* read / write */
 struct snd_ctl_elem_value32 {
 	struct snd_ctl_elem_id id;
@@ -771,10 +711,19 @@ static int ctl_compat_ioctl_elem_list_32(struct snd_ctl_file *ctl_file,
 	return snd_ctl_elem_list(ctl_file, list);
 }
 
+static int ctl_compat_ioctl_elem_info_32(struct snd_ctl_file *ctl_file,
+					 void *buf)
+{
+	struct snd_ctl_elem_info *info = buf;
+
+	return snd_ctl_elem_info(ctl_file, info);
+}
+
 enum {
 	SNDRV_CTL_IOCTL_ELEM_LIST_32 =
 				_IOWR('U', 0x10, struct snd_ctl_elem_list_32),
-	SNDRV_CTL_IOCTL_ELEM_INFO32 = _IOWR('U', 0x11, struct snd_ctl_elem_info32),
+	SNDRV_CTL_IOCTL_ELEM_INFO_32 =
+				_IOWR('U', 0x11, struct snd_ctl_elem_info_32),
 	SNDRV_CTL_IOCTL_ELEM_READ32 = _IOWR('U', 0x12, struct snd_ctl_elem_value32),
 	SNDRV_CTL_IOCTL_ELEM_WRITE32 = _IOWR('U', 0x13, struct snd_ctl_elem_value32),
 	SNDRV_CTL_IOCTL_ELEM_ADD32 = _IOWR('U', 0x17, struct snd_ctl_elem_info32),
@@ -804,6 +753,13 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 			serialize_to_elem_list_32,
 			SNDRV_CTL_IOCTL_ELEM_LIST,
 		},
+		{
+			SNDRV_CTL_IOCTL_ELEM_INFO_32,
+			deserialize_from_elem_info_32,
+			ctl_compat_ioctl_elem_info_32,
+			serialize_to_elem_info_32,
+			SNDRV_CTL_IOCTL_ELEM_INFO,
+		},
 	};
 	struct snd_ctl_file *ctl;
 	void __user *argp = compat_ptr(arg);
@@ -817,8 +773,6 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		return -ENXIO;
 
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_ELEM_INFO32:
-		return snd_ctl_elem_info_compat(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_READ32:
 		return snd_ctl_elem_read_user_compat(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_WRITE32:
