@@ -2,6 +2,7 @@
  * compat ioctls for control API
  *
  *   Copyright (c) by Takashi Iwai <tiwai@suse.de>
+ *   Copyright (c) 2017 Takashi Sakamoto
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -537,14 +538,14 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		},
 #endif
 	};
-	struct snd_ctl_file *ctl;
+	struct snd_ctl_file *ctl_file;
 	void *buf, *data;
 	unsigned int size;
 	int i;
 	int err;
 
-	ctl = file->private_data;
-	if (snd_BUG_ON(!ctl || !ctl->card))
+	ctl_file = file->private_data;
+	if (snd_BUG_ON(!ctl_file || !ctl_file->card))
 		return -ENXIO;
 
 	for (i = 0; i < ARRAY_SIZE(handlers); ++i) {
@@ -557,7 +558,8 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		down_read(&snd_ioctl_rwsem);
 		list_for_each_entry(p, &snd_control_compat_ioctls, list) {
 			if (p->fioctl) {
-				err = p->fioctl(ctl->card, ctl, cmd, arg);
+				err = p->fioctl(ctl_file->card, ctl_file, cmd,
+						arg);
 				if (err != -ENOIOCTLCMD) {
 					up_read(&snd_ioctl_rwsem);
 					return err;
@@ -589,15 +591,15 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		}
 	}
 
-	err = handlers[i].deserialize(ctl, buf, data);
+	err = handlers[i].deserialize(ctl_file, buf, data);
 	if (err < 0)
 		goto end;
 
-	err = handlers[i].func(ctl, buf);
+	err = handlers[i].func(ctl_file, buf);
 	if (err < 0)
 		goto end;
 
-	err = handlers[i].serialize(ctl, data, buf);
+	err = handlers[i].serialize(ctl_file, data, buf);
 	if (err >= 0) {
 		if (handlers[i].cmd & IOC_OUT) {
 			if (copy_to_user(compat_ptr(arg), data, size))
@@ -609,7 +611,7 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		if (cmd == SNDRV_CTL_IOCTL_ELEM_ADD_32 ||
 		    cmd == SNDRV_CTL_IOCTL_ELEM_REPLACE_32) {
 			struct snd_ctl_elem_info *info = buf;
-			snd_ctl_remove_user_ctl(ctl, &info->id);
+			snd_ctl_remove_user_ctl(ctl_file, &info->id);
 		}
 	}
 end:
