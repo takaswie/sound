@@ -673,7 +673,7 @@ static int copy_ctl_value_to_user(void __user *userdata,
 	return 0;
 }
 
-static int ctl_elem_read_user(struct snd_card *card,
+static int ctl_elem_read_user(struct snd_ctl_file *ctl_file,
 			      void __user *userdata, void __user *valuep)
 {
 	struct snd_ctl_elem_value *data;
@@ -683,12 +683,12 @@ static int ctl_elem_read_user(struct snd_card *card,
 	if (data == NULL)
 		return -ENOMEM;
 
-	err = copy_ctl_value_from_user(card, data, userdata, valuep,
+	err = copy_ctl_value_from_user(ctl_file->card, data, userdata, valuep,
 				       &type, &count);
 	if (err < 0)
 		goto error;
 
-	err = snd_ctl_elem_read(card, data);
+	err = snd_ctl_elem_read(ctl_file, data);
 	if (err < 0)
 		goto error;
 	err = copy_ctl_value_to_user(userdata, valuep, data, type, count);
@@ -701,14 +701,13 @@ static int ctl_elem_write_user(struct snd_ctl_file *ctl_file,
 			       void __user *userdata, void __user *valuep)
 {
 	struct snd_ctl_elem_value *data;
-	struct snd_card *card = ctl_file->card;
 	int err, type, count;
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (data == NULL)
 		return -ENOMEM;
 
-	err = copy_ctl_value_from_user(card, data, userdata, valuep,
+	err = copy_ctl_value_from_user(ctl_file->card, data, userdata, valuep,
 				       &type, &count);
 	if (err < 0)
 		goto error;
@@ -722,10 +721,10 @@ static int ctl_elem_write_user(struct snd_ctl_file *ctl_file,
 	return err;
 }
 
-static int snd_ctl_elem_read_user_compat(struct snd_card *card,
+static int snd_ctl_elem_read_user_compat(struct snd_ctl_file *ctl_file,
 					 struct snd_ctl_elem_value32 __user *data32)
 {
-	return ctl_elem_read_user(card, data32, &data32->value);
+	return ctl_elem_read_user(ctl_file, data32, &data32->value);
 }
 
 static int snd_ctl_elem_write_user_compat(struct snd_ctl_file *file,
@@ -735,10 +734,10 @@ static int snd_ctl_elem_write_user_compat(struct snd_ctl_file *file,
 }
 
 #ifdef CONFIG_X86_X32
-static int snd_ctl_elem_read_user_x32(struct snd_card *card,
+static int snd_ctl_elem_read_user_x32(struct snd_ctl_file *ctl_file,
 				      struct snd_ctl_elem_value_x32 __user *data32)
 {
-	return ctl_elem_read_user(card, data32, &data32->value);
+	return ctl_elem_read_user(ctl_file, data32, &data32->value);
 }
 
 static int snd_ctl_elem_write_user_x32(struct snd_ctl_file *file,
@@ -843,7 +842,7 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 	case SNDRV_CTL_IOCTL_ELEM_INFO32:
 		return snd_ctl_elem_info_compat(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_READ32:
-		return snd_ctl_elem_read_user_compat(ctl->card, argp);
+		return snd_ctl_elem_read_user_compat(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_WRITE32:
 		return snd_ctl_elem_write_user_compat(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_ADD32:
@@ -852,7 +851,7 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		return snd_ctl_elem_add_compat(ctl, argp, 1);
 #ifdef CONFIG_X86_X32
 	case SNDRV_CTL_IOCTL_ELEM_READ_X32:
-		return snd_ctl_elem_read_user_x32(ctl->card, argp);
+		return snd_ctl_elem_read_user_x32(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_WRITE_X32:
 		return snd_ctl_elem_write_user_x32(ctl, argp);
 #endif /* CONFIG_X86_X32 */
