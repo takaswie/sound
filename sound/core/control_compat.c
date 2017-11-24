@@ -308,6 +308,95 @@ static int __maybe_unused serialize_to_elem_value_32(
 	return 0;
 }
 
+/*
+ * Unlikw any System V ABI for 32 bit architecture, ABI for i386 architecture has
+ * different alignment (4 bytes) for double-word type. Thus offset of '.value'
+ * member is multiples of 4 bytes.
+ */
+struct snd_ctl_elem_value_i386 {
+	struct snd_ctl_elem_id id;
+	u32 indirect:1;
+	u32 padding:31;			/* For 4 bytes alignment of '.value'. */
+	union {
+		s32 integer[128];	/* long on ILP32. */
+		u8 data[512];
+		s64 integer64[64];
+	} value;
+	struct {
+		s32 tv_sec;		/* long on ILP32. */
+		s32 tv_nsec;		/* long on ILP32. */
+	} tstamp;
+	u8 reserved[128 - sizeof(s32) - sizeof(s32)];
+} __packed;
+
+static int __maybe_unused deserialize_from_elem_value_i386(
+			struct snd_ctl_file *ctl_file, void *dst, void *src)
+{
+	struct snd_ctl_elem_value *data = dst;
+	struct snd_ctl_elem_value_i386 *datai386 = src;
+	snd_ctl_elem_type_t type;
+	int err;
+
+	err = get_type(ctl_file, &datai386->id, &type);
+	if (err < 0)
+		return err;
+
+	data->id = datai386->id;
+	data->indirect = datai386->indirect;
+
+	if (type == SNDRV_CTL_ELEM_TYPE_BOOLEAN ||
+	    type == SNDRV_CTL_ELEM_TYPE_INTEGER) {
+		int i;
+		for (i = 0; i < 128; ++i) {
+			data->value.integer.value[i] =
+						(s64)datai386->value.integer[i];
+		}
+		/* Drop rest of this field. */
+	} else {
+		/* Copy whole space of this field. */
+		memcpy(&data->value, &datai386->value, sizeof(data->value));
+	}
+
+	data->tstamp.tv_sec = (s64)datai386->tstamp.tv_sec;
+	data->tstamp.tv_nsec = (s64)datai386->tstamp.tv_nsec;
+
+	return 0;
+}
+
+static int __maybe_unused serialize_to_elem_value_i386(
+			struct snd_ctl_file *ctl_file, void *dst, void *src)
+{
+	struct snd_ctl_elem_value_i386 *datai386 = dst;
+	struct snd_ctl_elem_value *data = src;
+	snd_ctl_elem_type_t type;
+	int err;
+
+	err = get_type(ctl_file, &data->id, &type);
+	if (err < 0)
+		return err;
+
+	datai386->id = data->id;
+	datai386->indirect = data->indirect;
+
+	if (type == SNDRV_CTL_ELEM_TYPE_BOOLEAN ||
+	    type == SNDRV_CTL_ELEM_TYPE_INTEGER) {
+		int i;
+		for (i = 0; i < 128; ++i) {
+			datai386->value.integer[i] =
+					(s32)data->value.integer.value[i];
+		}
+		/* Drop rest of this field. */
+	} else {
+		/* Copy whole space of this field. */
+		memcpy(&datai386->value, &data->value, sizeof(datai386->value));
+	}
+
+	datai386->tstamp.tv_sec = (s32)data->tstamp.tv_sec;
+	datai386->tstamp.tv_nsec = (s32)data->tstamp.tv_nsec;
+
+	return 0;
+}
+
 struct snd_ctl_elem_list32 {
 	u32 offset;
 	u32 space;
