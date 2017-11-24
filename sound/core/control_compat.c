@@ -409,26 +409,30 @@ struct snd_ctl_elem_list32 {
 static int snd_ctl_elem_list_compat(struct snd_ctl_file *ctl_file,
 				    struct snd_ctl_elem_list32 __user *data32)
 {
-	struct snd_ctl_elem_list __user *data;
-	compat_caddr_t ptr;
+	struct snd_ctl_elem_list *list;
+	compat_uptr_t uptr;
 	int err;
 
-	data = compat_alloc_user_space(sizeof(*data));
+	list = kzalloc(sizeof(*list), GFP_KERNEL);
+	if (!list)
+		return -EFAULT;
 
-	/* offset, space, used, count */
-	if (copy_in_user(data, data32, 4 * sizeof(u32)))
-		return -EFAULT;
-	/* pids */
-	if (get_user(ptr, &data32->pids) ||
-	    put_user(compat_ptr(ptr), &data->pids))
-		return -EFAULT;
-	err = snd_ctl_elem_list_user(ctl_file, data);
+	if (copy_from_user(list, data32, 4 * sizeof(u32)) ||
+	    get_user(uptr, &data32->pids)) {
+		err = -EFAULT;
+		goto end;
+	}
+	list->pids = compat_ptr(uptr);
+
+	err = snd_ctl_elem_list(ctl_file, list);
 	if (err < 0)
-		return err;
-	/* copy the result */
-	if (copy_in_user(data32, data, 4 * sizeof(u32)))
-		return -EFAULT;
-	return 0;
+		goto end;
+
+	if (copy_to_user(data32, list, 4 * sizeof(u32)))
+		err = -EFAULT;
+end:
+	kfree(list);
+	return err;
 }
 
 /*
