@@ -406,7 +406,7 @@ struct snd_ctl_elem_list32 {
 	unsigned char reserved[50];
 } /* don't set packed attribute here */;
 
-static int snd_ctl_elem_list_compat(struct snd_card *card,
+static int snd_ctl_elem_list_compat(struct snd_ctl_file *ctl_file,
 				    struct snd_ctl_elem_list32 __user *data32)
 {
 	struct snd_ctl_elem_list __user *data;
@@ -422,7 +422,7 @@ static int snd_ctl_elem_list_compat(struct snd_card *card,
 	if (get_user(ptr, &data32->pids) ||
 	    put_user(compat_ptr(ptr), &data->pids))
 		return -EFAULT;
-	err = snd_ctl_elem_list(card, data);
+	err = snd_ctl_elem_list(ctl_file, data);
 	if (err < 0)
 		return err;
 	/* copy the result */
@@ -844,7 +844,7 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 
 	switch (cmd) {
 	case SNDRV_CTL_IOCTL_ELEM_LIST32:
-		return snd_ctl_elem_list_compat(ctl->card, argp);
+		return snd_ctl_elem_list_compat(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_INFO32:
 		return snd_ctl_elem_info_compat(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_READ32:
