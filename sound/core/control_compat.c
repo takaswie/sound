@@ -697,11 +697,11 @@ static int ctl_elem_read_user(struct snd_card *card,
 	return err;
 }
 
-static int ctl_elem_write_user(struct snd_ctl_file *file,
+static int ctl_elem_write_user(struct snd_ctl_file *ctl_file,
 			       void __user *userdata, void __user *valuep)
 {
 	struct snd_ctl_elem_value *data;
-	struct snd_card *card = file->card;
+	struct snd_card *card = ctl_file->card;
 	int err, type, count;
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
@@ -713,7 +713,7 @@ static int ctl_elem_write_user(struct snd_ctl_file *file,
 	if (err < 0)
 		goto error;
 
-	err = snd_ctl_elem_write(card, file, data);
+	err = snd_ctl_elem_write(ctl_file, data);
 	if (err < 0)
 		goto error;
 	err = copy_ctl_value_to_user(userdata, valuep, data, type, count);
