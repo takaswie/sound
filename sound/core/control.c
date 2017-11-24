@@ -875,20 +875,23 @@ static int snd_ctl_elem_info(struct snd_ctl_file *ctl,
 	return result;
 }
 
-static int snd_ctl_elem_info_user(struct snd_ctl_file *ctl,
-				  struct snd_ctl_elem_info __user *_info)
+static int snd_ctl_elem_info_user(struct snd_ctl_file *ctl, void __user *arg)
 {
-	struct snd_ctl_elem_info info;
-	int result;
+	struct snd_ctl_elem_info *info;
+	int err;
 
-	if (copy_from_user(&info, _info, sizeof(info)))
-		return -EFAULT;
-	result = snd_ctl_elem_info(ctl, &info);
-	if (result < 0)
-		return result;
-	if (copy_to_user(_info, &info, sizeof(info)))
-		return -EFAULT;
-	return result;
+	info = memdup_user(arg, sizeof(*info));
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+
+	err = snd_ctl_elem_info(ctl, info);
+	if (err >= 0) {
+		if (copy_to_user(arg, info, sizeof(*info)))
+			return -EFAULT;
+	}
+
+	kfree(info);
+	return err;
 }
 
 static int snd_ctl_elem_read(struct snd_card *card,
