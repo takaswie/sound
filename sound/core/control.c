@@ -954,27 +954,33 @@ static int snd_ctl_elem_write(struct snd_card *card, struct snd_ctl_file *file,
 	unsigned int index_offset;
 	int result;
 
-	kctl = snd_ctl_find_id(card, &control->id);
-	if (kctl == NULL)
-		return -ENOENT;
+	result = snd_power_wait(file->card, SNDRV_CTL_POWER_D0);
+	if (result < 0)
+		return result;
+
+	down_write(&file->card->controls_rwsem);
+	kctl = snd_ctl_find_id(file->card, &control->id);
+	if (kctl == NULL) {
+		result = -ENOENT;
+		goto end;
+	}
 
 	index_offset = snd_ctl_get_ioff(kctl, &control->id);
 	vd = &kctl->vd[index_offset];
 	if (!(vd->access & SNDRV_CTL_ELEM_ACCESS_WRITE) || kctl->put == NULL ||
 	    (file && vd->owner && vd->owner != file)) {
-		return -EPERM;
+		result = -EPERM;
+		goto end;
 	}
 
 	snd_ctl_build_ioff(&control->id, kctl, index_offset);
 	result = kctl->put(kctl, control);
-	if (result < 0)
-		return result;
-
 	if (result > 0) {
 		struct snd_ctl_elem_id id = control->id;
-		snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_VALUE, &id);
+		snd_ctl_notify(file->card, SNDRV_CTL_EVENT_MASK_VALUE, &id);
 	}
-
+end:
+	up_write(&file->card->controls_rwsem);
 	return 0;
 }
 
@@ -989,14 +995,7 @@ static int snd_ctl_elem_write_user(struct snd_ctl_file *file,
 	if (IS_ERR(control))
 		return PTR_ERR(control);
 
-	card = file->card;
-	result = snd_power_wait(card, SNDRV_CTL_POWER_D0);
-	if (result < 0)
-		goto error;
-
-	down_write(&card->controls_rwsem);
 	result = snd_ctl_elem_write(card, file, control);
-	up_write(&card->controls_rwsem);
 	if (result < 0)
 		goto error;
 
