@@ -1406,7 +1406,7 @@ static int snd_ctl_elem_add(struct snd_ctl_file *file,
 }
 
 static int snd_ctl_elem_add_user(struct snd_ctl_file *ctl_file,
-				 void __user *arg, int replace)
+				 void __user *arg)
 {
 	struct snd_ctl_elem_info *info;
 	int err;
@@ -1415,7 +1415,29 @@ static int snd_ctl_elem_add_user(struct snd_ctl_file *ctl_file,
 	if (IS_ERR(info))
 		return PTR_ERR(info);
 
-	err = snd_ctl_elem_add(ctl_file, info, replace);
+	err = snd_ctl_elem_add(ctl_file, info, 0);
+	if (err >= 0) {
+		if (copy_to_user(arg, info, sizeof(*info))) {
+			snd_ctl_remove_user_ctl(ctl_file, &info->id);
+			err = -EFAULT;
+		}
+	}
+
+	kfree(info);
+	return err;
+}
+
+static int snd_ctl_elem_replace_user(struct snd_ctl_file *ctl_file,
+				     void __user *arg)
+{
+	struct snd_ctl_elem_info *info;
+	int err;
+
+	info = memdup_user(arg, sizeof(*info));
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+
+	err = snd_ctl_elem_add(ctl_file, info, 1);
 	if (err >= 0) {
 		if (copy_to_user(arg, info, sizeof(*info))) {
 			snd_ctl_remove_user_ctl(ctl_file, &info->id);
@@ -1592,9 +1614,9 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 	case SNDRV_CTL_IOCTL_ELEM_UNLOCK:
 		return snd_ctl_elem_unlock(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_ADD:
-		return snd_ctl_elem_add_user(ctl, argp, 0);
+		return snd_ctl_elem_add_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_REPLACE:
-		return snd_ctl_elem_add_user(ctl, argp, 1);
+		return snd_ctl_elem_replace_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_REMOVE:
 		return snd_ctl_elem_remove(ctl, argp);
 	case SNDRV_CTL_IOCTL_SUBSCRIBE_EVENTS:
