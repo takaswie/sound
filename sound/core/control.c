@@ -842,6 +842,10 @@ static int snd_ctl_elem_info(struct snd_ctl_file *ctl,
 	unsigned int index_offset;
 	int result;
 	
+	result = snd_power_wait(ctl->card, SNDRV_CTL_POWER_D0);
+	if (result < 0)
+		return result;
+
 	down_read(&card->controls_rwsem);
 	kctl = snd_ctl_find_id(card, &info->id);
 	if (kctl == NULL) {
@@ -879,9 +883,6 @@ static int snd_ctl_elem_info_user(struct snd_ctl_file *ctl,
 
 	if (copy_from_user(&info, _info, sizeof(info)))
 		return -EFAULT;
-	result = snd_power_wait(ctl->card, SNDRV_CTL_POWER_D0);
-	if (result < 0)
-		return result;
 	result = snd_ctl_elem_info(ctl, &info);
 	if (result < 0)
 		return result;
