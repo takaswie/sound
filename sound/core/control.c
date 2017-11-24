@@ -949,7 +949,7 @@ static int snd_ctl_elem_read_user(struct snd_card *card,
 	return result;
 }
 
-static int snd_ctl_elem_write(struct snd_card *card, struct snd_ctl_file *file,
+static int snd_ctl_elem_write(struct snd_ctl_file *ctl_file,
 			      struct snd_ctl_elem_value *control)
 {
 	struct snd_kcontrol *kctl;
@@ -957,12 +957,12 @@ static int snd_ctl_elem_write(struct snd_card *card, struct snd_ctl_file *file,
 	unsigned int index_offset;
 	int result;
 
-	result = snd_power_wait(file->card, SNDRV_CTL_POWER_D0);
+	result = snd_power_wait(ctl_file->card, SNDRV_CTL_POWER_D0);
 	if (result < 0)
 		return result;
 
-	down_write(&file->card->controls_rwsem);
-	kctl = snd_ctl_find_id(file->card, &control->id);
+	down_write(&ctl_file->card->controls_rwsem);
+	kctl = snd_ctl_find_id(ctl_file->card, &control->id);
 	if (kctl == NULL) {
 		result = -ENOENT;
 		goto end;
@@ -971,7 +971,7 @@ static int snd_ctl_elem_write(struct snd_card *card, struct snd_ctl_file *file,
 	index_offset = snd_ctl_get_ioff(kctl, &control->id);
 	vd = &kctl->vd[index_offset];
 	if (!(vd->access & SNDRV_CTL_ELEM_ACCESS_WRITE) || kctl->put == NULL ||
-	    (file && vd->owner && vd->owner != file)) {
+	    (ctl_file && vd->owner && vd->owner != ctl_file)) {
 		result = -EPERM;
 		goto end;
 	}
@@ -980,25 +980,24 @@ static int snd_ctl_elem_write(struct snd_card *card, struct snd_ctl_file *file,
 	result = kctl->put(kctl, control);
 	if (result > 0) {
 		struct snd_ctl_elem_id id = control->id;
-		snd_ctl_notify(file->card, SNDRV_CTL_EVENT_MASK_VALUE, &id);
+		snd_ctl_notify(ctl_file->card, SNDRV_CTL_EVENT_MASK_VALUE, &id);
 	}
 end:
-	up_write(&file->card->controls_rwsem);
+	up_write(&ctl_file->card->controls_rwsem);
 	return 0;
 }
 
-static int snd_ctl_elem_write_user(struct snd_ctl_file *file,
+static int snd_ctl_elem_write_user(struct snd_ctl_file *ctl_file,
 				   struct snd_ctl_elem_value __user *_control)
 {
 	struct snd_ctl_elem_value *control;
-	struct snd_card *card;
 	int result;
 
 	control = memdup_user(_control, sizeof(*control));
 	if (IS_ERR(control))
 		return PTR_ERR(control);
 
-	result = snd_ctl_elem_write(card, file, control);
+	result = snd_ctl_elem_write(ctl_file, control);
 	if (result < 0)
 		goto error;
 
