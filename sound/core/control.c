@@ -922,31 +922,27 @@ end:
 	return 0;
 }
 
-static int snd_ctl_elem_lock(struct snd_ctl_file *file,
-			     struct snd_ctl_elem_id __user *_id)
+static int ctl_ioctl_elem_lock(struct snd_ctl_file *ctl_file, void *buf)
 {
-	struct snd_card *card = file->card;
-	struct snd_ctl_elem_id id;
+	struct snd_ctl_elem_id *id = buf;
 	struct snd_kcontrol *kctl;
 	struct snd_kcontrol_volatile *vd;
 	int result;
 	
-	if (copy_from_user(&id, _id, sizeof(id)))
-		return -EFAULT;
-	down_write(&card->controls_rwsem);
-	kctl = snd_ctl_find_id(card, &id);
+	down_write(&ctl_file->card->controls_rwsem);
+	kctl = snd_ctl_find_id(ctl_file->card, id);
 	if (kctl == NULL) {
 		result = -ENOENT;
 	} else {
-		vd = &kctl->vd[snd_ctl_get_ioff(kctl, &id)];
-		if (vd->owner != NULL)
+		vd = &kctl->vd[snd_ctl_get_ioff(kctl, id)];
+		if (vd->owner) {
 			result = -EBUSY;
-		else {
-			vd->owner = file;
+		} else {
+			vd->owner = ctl_file;
 			result = 0;
 		}
 	}
-	up_write(&card->controls_rwsem);
+	up_write(&ctl_file->card->controls_rwsem);
 	return result;
 }
 
@@ -1569,6 +1565,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		{ SNDRV_CTL_IOCTL_ELEM_INFO,	ctl_ioctl_elem_info },
 		{ SNDRV_CTL_IOCTL_ELEM_READ,	ctl_ioctl_elem_read },
 		{ SNDRV_CTL_IOCTL_ELEM_WRITE,	ctl_ioctl_elem_write },
+		{ SNDRV_CTL_IOCTL_ELEM_LOCK,	ctl_ioctl_elem_lock },
 	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
@@ -1584,8 +1581,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	if (snd_BUG_ON(!card))
 		return -ENXIO;
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_ELEM_LOCK:
-		return snd_ctl_elem_lock(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_UNLOCK:
 		return snd_ctl_elem_unlock(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_ADD:
