@@ -719,15 +719,13 @@ struct snd_kcontrol *snd_ctl_find_id(struct snd_card *card,
 }
 EXPORT_SYMBOL(snd_ctl_find_id);
 
-static int snd_ctl_card_info(struct snd_card *card, struct snd_ctl_file * ctl,
-			     unsigned int cmd, void __user *arg)
+static int ctl_ioctl_card_info(struct snd_ctl_file *ctl_file, void *arg)
 {
-	struct snd_ctl_card_info *info;
+	struct snd_ctl_card_info *info = arg;
+	struct snd_card *card = ctl_file->card;
 
-	info = kzalloc(sizeof(*info), GFP_KERNEL);
-	if (! info)
-		return -ENOMEM;
 	down_read(&snd_ioctl_rwsem);
+
 	info->card = card->number;
 	strlcpy(info->id, card->id, sizeof(info->id));
 	strlcpy(info->driver, card->driver, sizeof(info->driver));
@@ -735,12 +733,9 @@ static int snd_ctl_card_info(struct snd_card *card, struct snd_ctl_file * ctl,
 	strlcpy(info->longname, card->longname, sizeof(info->longname));
 	strlcpy(info->mixername, card->mixername, sizeof(info->mixername));
 	strlcpy(info->components, card->components, sizeof(info->components));
+
 	up_read(&snd_ioctl_rwsem);
-	if (copy_to_user(arg, info, sizeof(struct snd_ctl_card_info))) {
-		kfree(info);
-		return -EFAULT;
-	}
-	kfree(info);
+
 	return 0;
 }
 
@@ -1650,6 +1645,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		int (*func)(struct snd_ctl_file *ctl_file, void *buf);
 	} handlers[] = {
 		{ SNDRV_CTL_IOCTL_PVERSION,	ctl_ioctl_pversion },
+		{ SNDRV_CTL_IOCTL_CARD_INFO,	ctl_ioctl_card_info },
 	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
@@ -1665,8 +1661,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	if (snd_BUG_ON(!card))
 		return -ENXIO;
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_CARD_INFO:
-		return snd_ctl_card_info(card, ctl, cmd, argp);
 	case SNDRV_CTL_IOCTL_ELEM_LIST:
 		return snd_ctl_elem_list_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_INFO:
