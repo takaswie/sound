@@ -1495,6 +1495,18 @@ static int ctl_ioctl_power(struct snd_ctl_file *ctl_file, void *buf)
 	return -ENOPROTOOPT;
 }
 
+static int ctl_ioctl_power_state(struct snd_ctl_file *ctl_file, void *buf)
+{
+	int *power_state = buf;
+
+#ifdef CONFIG_PM
+	*power_state = ctl_file->card->power_state;
+#else
+	*power_state = SNDRV_CTL_POWER_D0;
+#endif
+	return 0;
+}
+
 static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 			  unsigned long arg)
 {
@@ -1523,11 +1535,10 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		{ SNDRV_CTL_IOCTL_ELEM_REMOVE,	ctl_ioctl_elem_remove },
 		{ SNDRV_CTL_IOCTL_SUBSCRIBE_EVENTS, ctl_ioctl_subscribe_events },
 		{ SNDRV_CTL_IOCTL_POWER,	ctl_ioctl_power },
+		{ SNDRV_CTL_IOCTL_POWER_STATE,	ctl_ioctl_power_state },
 	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
-	void __user *argp = (void __user *)arg;
-	int __user *ip = argp;
 	unsigned int size;
 	void *buf;
 	int i;
@@ -1537,14 +1548,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	card = ctl->card;
 	if (snd_BUG_ON(!card))
 		return -ENXIO;
-	switch (cmd) {
-	case SNDRV_CTL_IOCTL_POWER_STATE:
-#ifdef CONFIG_PM
-		return put_user(card->power_state, ip) ? -EFAULT : 0;
-#else
-		return put_user(SNDRV_CTL_POWER_D0, ip) ? -EFAULT : 0;
-#endif
-	}
 
 	for (i = 0; i < ARRAY_SIZE(in_user_handlers); ++i) {
 		if (in_user_handlers[i].cmd == cmd)
