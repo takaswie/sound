@@ -1595,6 +1595,36 @@ static int snd_ctl_tlv_ioctl(struct snd_ctl_file *file,
 	return -ENXIO;
 }
 
+static int ctl_ioctl_tlv_read(struct snd_ctl_file *ctl_file, void __user *arg)
+{
+	int err;
+
+	down_read(&ctl_file->card->controls_rwsem);
+	err = snd_ctl_tlv_ioctl(ctl_file, arg, SNDRV_CTL_TLV_OP_READ);
+	up_read(&ctl_file->card->controls_rwsem);
+	return err;
+}
+
+static int ctl_ioctl_tlv_write(struct snd_ctl_file *ctl_file, void __user *arg)
+{
+	int err;
+
+	down_write(&ctl_file->card->controls_rwsem);
+	err = snd_ctl_tlv_ioctl(ctl_file, arg, SNDRV_CTL_TLV_OP_WRITE);
+	up_write(&ctl_file->card->controls_rwsem);
+	return err;
+}
+
+static int ctl_ioctl_tlv_command(struct snd_ctl_file *ctl_file, void __user *arg)
+{
+	int err;
+
+	down_write(&ctl_file->card->controls_rwsem);
+	err = snd_ctl_tlv_ioctl(ctl_file, arg, SNDRV_CTL_TLV_OP_CMD);
+	up_write(&ctl_file->card->controls_rwsem);
+	return err;
+}
+
 static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 			  unsigned long arg)
 {
@@ -1602,7 +1632,9 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		unsigned int cmd;
 		int (*func)(struct snd_ctl_file *ctl_file, void __user *buf);
 	} in_user_handlers[] = {
-		{ 0, NULL },
+		{ SNDRV_CTL_IOCTL_TLV_READ,	ctl_ioctl_tlv_read },
+		{ SNDRV_CTL_IOCTL_TLV_WRITE,	ctl_ioctl_tlv_write },
+		{ SNDRV_CTL_IOCTL_TLV_COMMAND,	ctl_ioctl_tlv_command },
 	};
 	static const struct {
 		unsigned int cmd;
@@ -1648,21 +1680,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		return snd_ctl_elem_remove(ctl, argp);
 	case SNDRV_CTL_IOCTL_SUBSCRIBE_EVENTS:
 		return snd_ctl_subscribe_events(ctl, ip);
-	case SNDRV_CTL_IOCTL_TLV_READ:
-		down_read(&ctl->card->controls_rwsem);
-		err = snd_ctl_tlv_ioctl(ctl, argp, SNDRV_CTL_TLV_OP_READ);
-		up_read(&ctl->card->controls_rwsem);
-		return err;
-	case SNDRV_CTL_IOCTL_TLV_WRITE:
-		down_write(&ctl->card->controls_rwsem);
-		err = snd_ctl_tlv_ioctl(ctl, argp, SNDRV_CTL_TLV_OP_WRITE);
-		up_write(&ctl->card->controls_rwsem);
-		return err;
-	case SNDRV_CTL_IOCTL_TLV_COMMAND:
-		down_write(&ctl->card->controls_rwsem);
-		err = snd_ctl_tlv_ioctl(ctl, argp, SNDRV_CTL_TLV_OP_CMD);
-		up_write(&ctl->card->controls_rwsem);
-		return err;
 	case SNDRV_CTL_IOCTL_POWER:
 		return -ENOPROTOOPT;
 	case SNDRV_CTL_IOCTL_POWER_STATE:
