@@ -1537,21 +1537,20 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		{ SNDRV_CTL_IOCTL_POWER,	ctl_ioctl_power },
 		{ SNDRV_CTL_IOCTL_POWER_STATE,	ctl_ioctl_power_state },
 	};
-	struct snd_ctl_file *ctl;
-	struct snd_card *card;
+	struct snd_ctl_file *ctl_file;
 	unsigned int size;
 	void *buf;
 	int i;
 	int err;
 
-	ctl = file->private_data;
-	card = ctl->card;
-	if (snd_BUG_ON(!card))
+	ctl_file = file->private_data;
+	if (snd_BUG_ON(!ctl_file->card))
 		return -ENXIO;
 
 	for (i = 0; i < ARRAY_SIZE(in_user_handlers); ++i) {
 		if (in_user_handlers[i].cmd == cmd)
-			return in_user_handlers[i].func(ctl, (void __user *)arg);
+			return in_user_handlers[i].func(ctl_file,
+							(void __user *)arg);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(handlers); ++i) {
@@ -1562,14 +1561,14 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		struct snd_kctl_ioctl *p;
 		down_read(&snd_ioctl_rwsem);
 		list_for_each_entry(p, &snd_control_ioctls, list) {
-			err = p->fioctl(card, ctl, cmd, arg);
+			err = p->fioctl(ctl_file->card, ctl_file, cmd, arg);
 			if (err != -ENOIOCTLCMD) {
 				up_read(&snd_ioctl_rwsem);
 				return err;
 			}
 		}
 		up_read(&snd_ioctl_rwsem);
-		dev_dbg(card->dev, "unknown ioctl = 0x%x\n", cmd);
+		dev_dbg(ctl_file->card->dev, "unknown ioctl = 0x%x\n", cmd);
 		return -ENOTTY;
 	}
 
@@ -1585,7 +1584,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		}
 	}
 
-	err = handlers[i].func(ctl, buf);
+	err = handlers[i].func(ctl_file, buf);
 	if (err < 0)
 		goto end;
 
@@ -1595,7 +1594,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 			if (cmd == SNDRV_CTL_IOCTL_ELEM_ADD ||
 			    cmd == SNDRV_CTL_IOCTL_ELEM_REPLACE) {
 				struct snd_ctl_elem_info *info = buf;
-				snd_ctl_remove_user_ctl(ctl, &info->id);
+				snd_ctl_remove_user_ctl(ctl_file, &info->id);
 			}
 		}
 	}
