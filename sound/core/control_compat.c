@@ -398,14 +398,6 @@ static int __maybe_unused serialize_to_elem_value_i386(
 	return 0;
 }
 
-static int ctl_compat_ioctl_elem_replace_32(struct snd_ctl_file *ctl_file,
-					    void *buf)
-{
-	struct snd_ctl_elem_info *info = buf;
-
-	return snd_ctl_elem_replace(ctl_file, info);
-}
-
 enum {
 	SNDRV_CTL_IOCTL_ELEM_LIST_32 =
 				_IOWR('U', 0x10, struct snd_ctl_elem_list_32),
@@ -461,7 +453,7 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		{
 			SNDRV_CTL_IOCTL_ELEM_REPLACE_32,
 			deserialize_from_elem_info_32,
-			ctl_compat_ioctl_elem_replace_32,
+			ctl_ioctl_elem_replace,
 			serialize_to_elem_info_32,
 			SNDRV_CTL_IOCTL_ELEM_REPLACE,
 		},
