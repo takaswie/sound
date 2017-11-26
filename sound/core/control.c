@@ -808,9 +808,9 @@ static bool validate_element_member_dimension(struct snd_ctl_elem_info *info)
 	return members == info->count;
 }
 
-static int snd_ctl_elem_info(struct snd_ctl_file *ctl,
-			     struct snd_ctl_elem_info *info)
+static int ctl_ioctl_elem_info(struct snd_ctl_file *ctl, void *buf)
 {
+	struct snd_ctl_elem_info *info = buf;
 	struct snd_card *card = ctl->card;
 	struct snd_kcontrol *kctl;
 	struct snd_kcontrol_volatile *vd;
@@ -848,25 +848,6 @@ static int snd_ctl_elem_info(struct snd_ctl_file *ctl,
 	}
 	up_read(&card->controls_rwsem);
 	return result;
-}
-
-static int snd_ctl_elem_info_user(struct snd_ctl_file *ctl, void __user *arg)
-{
-	struct snd_ctl_elem_info *info;
-	int err;
-
-	info = memdup_user(arg, sizeof(*info));
-	if (IS_ERR(info))
-		return PTR_ERR(info);
-
-	err = snd_ctl_elem_info(ctl, info);
-	if (err >= 0) {
-		if (copy_to_user(arg, info, sizeof(*info)))
-			return -EFAULT;
-	}
-
-	kfree(info);
-	return err;
 }
 
 static int snd_ctl_elem_read(struct snd_ctl_file *ctl_file,
@@ -1627,6 +1608,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		{ SNDRV_CTL_IOCTL_PVERSION,	ctl_ioctl_pversion },
 		{ SNDRV_CTL_IOCTL_CARD_INFO,	ctl_ioctl_card_info },
 		{ SNDRV_CTL_IOCTL_ELEM_LIST,	ctl_ioctl_elem_list },
+		{ SNDRV_CTL_IOCTL_ELEM_INFO,	ctl_ioctl_elem_info },
 	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
@@ -1642,8 +1624,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	if (snd_BUG_ON(!card))
 		return -ENXIO;
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_ELEM_INFO:
-		return snd_ctl_elem_info_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_READ:
 		return snd_ctl_elem_read_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_WRITE:
