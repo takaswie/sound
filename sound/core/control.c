@@ -739,9 +739,9 @@ static int ctl_ioctl_card_info(struct snd_ctl_file *ctl_file, void *arg)
 	return 0;
 }
 
-static int snd_ctl_elem_list(struct snd_ctl_file *ctl_file,
-			     struct snd_ctl_elem_list *list)
+static int ctl_ioctl_elem_list(struct snd_ctl_file *ctl_file, void *buf)
 {
+	struct snd_ctl_elem_list *list = buf;
 	struct snd_kcontrol *kctl;
 	struct snd_ctl_elem_id id;
 	unsigned int offset, space, jidx;
@@ -775,26 +775,6 @@ static int snd_ctl_elem_list(struct snd_ctl_file *ctl_file,
 	}
  out:
 	up_read(&ctl_file->card->controls_rwsem);
-	return err;
-}
-
-static int snd_ctl_elem_list_user(struct snd_ctl_file *ctl_file,
-				  void __user *arg)
-{
-	struct snd_ctl_elem_list *list;
-	int err;
-
-	list = memdup_user(arg, sizeof(*list));
-	if (IS_ERR(list))
-		return PTR_ERR(list);
-
-	err = snd_ctl_elem_list(ctl_file, list);
-	if (err >= 0) {
-		if (copy_to_user(arg, list, sizeof(*list)))
-			err = -EFAULT;
-	}
-
-	kfree(list);
 	return err;
 }
 
@@ -1646,6 +1626,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	} handlers[] = {
 		{ SNDRV_CTL_IOCTL_PVERSION,	ctl_ioctl_pversion },
 		{ SNDRV_CTL_IOCTL_CARD_INFO,	ctl_ioctl_card_info },
+		{ SNDRV_CTL_IOCTL_ELEM_LIST,	ctl_ioctl_elem_list },
 	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
@@ -1661,8 +1642,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	if (snd_BUG_ON(!card))
 		return -ENXIO;
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_ELEM_LIST:
-		return snd_ctl_elem_list_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_INFO:
 		return snd_ctl_elem_info_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_READ:
