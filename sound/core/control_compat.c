@@ -414,14 +414,6 @@ static int ctl_compat_ioctl_elem_replace_32(struct snd_ctl_file *ctl_file,
 	return snd_ctl_elem_replace(ctl_file, info);
 }
 
-static int ctl_compat_ioctl_elem_read_32(struct snd_ctl_file *ctl_file,
-					 void *buf)
-{
-	struct snd_ctl_elem_value *value = buf;
-
-	return snd_ctl_elem_read(ctl_file, value);
-}
-
 static int ctl_compat_ioctl_elem_write_32(struct snd_ctl_file *ctl_file,
 					  void *buf)
 {
@@ -493,7 +485,7 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		{
 			SNDRV_CTL_IOCTL_ELEM_READ_32,
 			deserialize_from_elem_value_32,
-			ctl_compat_ioctl_elem_read_32,
+			ctl_ioctl_elem_read,
 			serialize_to_elem_value_32,
 			SNDRV_CTL_IOCTL_ELEM_READ,
 		},
@@ -509,7 +501,7 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		{
 			SNDRV_CTL_IOCTL_ELEM_READ_I386,
 			deserialize_from_elem_value_i386,
-			ctl_compat_ioctl_elem_read_32,
+			ctl_ioctl_elem_read,
 			serialize_to_elem_value_i386,
 			SNDRV_CTL_IOCTL_ELEM_READ,
 		},
