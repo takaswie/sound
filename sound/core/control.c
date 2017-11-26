@@ -1330,24 +1330,21 @@ static int ctl_ioctl_elem_remove(struct snd_ctl_file *file, void *buf)
 	return snd_ctl_remove_user_ctl(file, id);
 }
 
-static int snd_ctl_subscribe_events(struct snd_ctl_file *file, int __user *ptr)
+static int ctl_ioctl_subscribe_events(struct snd_ctl_file *file, void *buf)
 {
-	int subscribe;
-	if (get_user(subscribe, ptr))
-		return -EFAULT;
-	if (subscribe < 0) {
-		subscribe = file->subscribed;
-		if (put_user(subscribe, ptr))
-			return -EFAULT;
-		return 0;
-	}
-	if (subscribe) {
+	int *subscribe = buf;
+
+	if (*subscribe < 0) {
+		*subscribe = file->subscribed;
+	} else if (*subscribe) {
 		file->subscribed = 1;
-		return 0;
-	} else if (file->subscribed) {
-		snd_ctl_empty_read_queue(file);
-		file->subscribed = 0;
+	} else {
+		if (file->subscribed) {
+			snd_ctl_empty_read_queue(file);
+			file->subscribed = 0;
+		}
 	}
+
 	return 0;
 }
 
@@ -1519,6 +1516,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		{ SNDRV_CTL_IOCTL_ELEM_ADD,	ctl_ioctl_elem_add },
 		{ SNDRV_CTL_IOCTL_ELEM_REPLACE,	ctl_ioctl_elem_replace },
 		{ SNDRV_CTL_IOCTL_ELEM_REMOVE,	ctl_ioctl_elem_remove },
+		{ SNDRV_CTL_IOCTL_SUBSCRIBE_EVENTS, ctl_ioctl_subscribe_events },
 	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
@@ -1534,8 +1532,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	if (snd_BUG_ON(!card))
 		return -ENXIO;
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_SUBSCRIBE_EVENTS:
-		return snd_ctl_subscribe_events(ctl, ip);
 	case SNDRV_CTL_IOCTL_POWER:
 		return -ENOPROTOOPT;
 	case SNDRV_CTL_IOCTL_POWER_STATE:
