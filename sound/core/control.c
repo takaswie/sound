@@ -1625,6 +1625,15 @@ static int ctl_ioctl_tlv_command(struct snd_ctl_file *ctl_file, void __user *arg
 	return err;
 }
 
+static int ctl_ioctl_pversion(struct snd_ctl_file *ctl_file, void *buf)
+{
+	int *pversion = buf;
+
+	*pversion = SNDRV_CTL_VERSION;
+
+	return 0;
+}
+
 static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 			  unsigned long arg)
 {
@@ -1640,7 +1649,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		unsigned int cmd;
 		int (*func)(struct snd_ctl_file *ctl_file, void *buf);
 	} handlers[] = {
-		{ 0, NULL },
+		{ SNDRV_CTL_IOCTL_PVERSION,	ctl_ioctl_pversion },
 	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
@@ -1656,8 +1665,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	if (snd_BUG_ON(!card))
 		return -ENXIO;
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_PVERSION:
-		return put_user(SNDRV_CTL_VERSION, ip) ? -EFAULT : 0;
 	case SNDRV_CTL_IOCTL_CARD_INFO:
 		return snd_ctl_card_info(card, ctl, cmd, argp);
 	case SNDRV_CTL_IOCTL_ELEM_LIST:
