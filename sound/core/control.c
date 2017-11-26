@@ -1595,13 +1595,28 @@ static int snd_ctl_tlv_ioctl(struct snd_ctl_file *file,
 	return -ENXIO;
 }
 
-static long snd_ctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
+			  unsigned long arg)
 {
+	static const struct {
+		unsigned int cmd;
+		int (*func)(struct snd_ctl_file *ctl_file, void __user *buf);
+	} in_user_handlers[] = {
+		{ 0, NULL },
+	};
+	static const struct {
+		unsigned int cmd;
+		int (*func)(struct snd_ctl_file *ctl_file, void *buf);
+	} handlers[] = {
+		{ 0, NULL },
+	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
-	struct snd_kctl_ioctl *p;
 	void __user *argp = (void __user *)arg;
 	int __user *ip = argp;
+	unsigned int size;
+	void *buf;
+	int i;
 	int err;
 
 	ctl = file->private_data;
@@ -1657,17 +1672,54 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 		return put_user(SNDRV_CTL_POWER_D0, ip) ? -EFAULT : 0;
 #endif
 	}
-	down_read(&snd_ioctl_rwsem);
-	list_for_each_entry(p, &snd_control_ioctls, list) {
-		err = p->fioctl(card, ctl, cmd, arg);
-		if (err != -ENOIOCTLCMD) {
-			up_read(&snd_ioctl_rwsem);
-			return err;
+
+	for (i = 0; i < ARRAY_SIZE(in_user_handlers); ++i) {
+		if (in_user_handlers[i].cmd == cmd)
+			return in_user_handlers[i].func(ctl, (void __user *)arg);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(handlers); ++i) {
+		if (handlers[i].cmd == cmd)
+			break;
+	}
+	if (i == ARRAY_SIZE(handlers)) {
+		struct snd_kctl_ioctl *p;
+		down_read(&snd_ioctl_rwsem);
+		list_for_each_entry(p, &snd_control_ioctls, list) {
+			err = p->fioctl(card, ctl, cmd, arg);
+			if (err != -ENOIOCTLCMD) {
+				up_read(&snd_ioctl_rwsem);
+				return err;
+			}
+		}
+		up_read(&snd_ioctl_rwsem);
+		dev_dbg(card->dev, "unknown ioctl = 0x%x\n", cmd);
+		return -ENOTTY;
+	}
+
+	size = _IOC_SIZE(handlers[i].cmd);
+	buf = kzalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (handlers[i].cmd & IOC_IN) {
+		if (copy_from_user(buf, (void __user *)arg, size)) {
+			err = -EFAULT;
+			goto end;
 		}
 	}
-	up_read(&snd_ioctl_rwsem);
-	dev_dbg(card->dev, "unknown ioctl = 0x%x\n", cmd);
-	return -ENOTTY;
+
+	err = handlers[i].func(ctl, buf);
+	if (err < 0)
+		goto end;
+
+	if (handlers[i].cmd & IOC_OUT) {
+		if (copy_to_user((void __user *)arg, buf, size))
+			err = -EFAULT;
+	}
+end:
+	kfree(buf);
+	return err;
 }
 
 static ssize_t snd_ctl_read(struct file *file, char __user *buffer,
