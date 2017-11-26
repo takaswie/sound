@@ -398,14 +398,6 @@ static int __maybe_unused serialize_to_elem_value_i386(
 	return 0;
 }
 
-static int ctl_compat_ioctl_elem_add_32(struct snd_ctl_file *ctl_file,
-					void *buf)
-{
-	struct snd_ctl_elem_info *info = buf;
-
-	return snd_ctl_elem_add(ctl_file, info);
-}
-
 static int ctl_compat_ioctl_elem_replace_32(struct snd_ctl_file *ctl_file,
 					    void *buf)
 {
@@ -462,7 +454,7 @@ static long snd_ctl_ioctl_compat(struct file *file, unsigned int cmd,
 		{
 			SNDRV_CTL_IOCTL_ELEM_ADD_32,
 			deserialize_from_elem_info_32,
-			ctl_compat_ioctl_elem_add_32,
+			ctl_ioctl_elem_add,
 			serialize_to_elem_info_32,
 			SNDRV_CTL_IOCTL_ELEM_ADD,
 		},

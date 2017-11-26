@@ -1161,8 +1161,7 @@ static void snd_ctl_elem_user_free(struct snd_kcontrol *kcontrol)
 	kfree(ue);
 }
 
-static int snd_ctl_elem_add(struct snd_ctl_file *file,
-			    struct snd_ctl_elem_info *info)
+static int ctl_ioctl_elem_add(struct snd_ctl_file *file, void *buf)
 {
 	/* The capacity of struct snd_ctl_elem_value.value.*/
 	static const unsigned int value_sizes[] = {
@@ -1181,6 +1180,7 @@ static int snd_ctl_elem_add(struct snd_ctl_file *file,
 		[SNDRV_CTL_ELEM_TYPE_IEC958]	= 1,
 		[SNDRV_CTL_ELEM_TYPE_INTEGER64] = 64,
 	};
+	struct snd_ctl_elem_info *info = buf;
 	struct snd_card *card = file->card;
 	struct snd_kcontrol *kctl;
 	unsigned int count;
@@ -1303,28 +1303,6 @@ static int snd_ctl_elem_add(struct snd_ctl_file *file,
 	return 0;
 }
 
-static int snd_ctl_elem_add_user(struct snd_ctl_file *ctl_file,
-				 void __user *arg)
-{
-	struct snd_ctl_elem_info *info;
-	int err;
-
-	info = memdup_user(arg, sizeof(*info));
-	if (IS_ERR(info))
-		return PTR_ERR(info);
-
-	err = snd_ctl_elem_add(ctl_file, info);
-	if (err >= 0) {
-		if (copy_to_user(arg, info, sizeof(*info))) {
-			snd_ctl_remove_user_ctl(ctl_file, &info->id);
-			err = -EFAULT;
-		}
-	}
-
-	kfree(info);
-	return err;
-}
-
 static int snd_ctl_elem_replace(struct snd_ctl_file *ctl_file,
 				struct snd_ctl_elem_info *info)
 {
@@ -1342,7 +1320,7 @@ static int snd_ctl_elem_replace(struct snd_ctl_file *ctl_file,
 	if (err < 0)
 		return err;
 
-	return snd_ctl_elem_add(ctl_file, info);
+	return ctl_ioctl_elem_add(ctl_file, info);
 }
 
 static int snd_ctl_elem_replace_user(struct snd_ctl_file *ctl_file,
@@ -1563,6 +1541,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		{ SNDRV_CTL_IOCTL_ELEM_WRITE,	ctl_ioctl_elem_write },
 		{ SNDRV_CTL_IOCTL_ELEM_LOCK,	ctl_ioctl_elem_lock },
 		{ SNDRV_CTL_IOCTL_ELEM_UNLOCK,	ctl_ioctl_elem_unlock },
+		{ SNDRV_CTL_IOCTL_ELEM_ADD,	ctl_ioctl_elem_add },
 	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
@@ -1578,8 +1557,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	if (snd_BUG_ON(!card))
 		return -ENXIO;
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_ELEM_ADD:
-		return snd_ctl_elem_add_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_REPLACE:
 		return snd_ctl_elem_replace_user(ctl, argp);
 	case SNDRV_CTL_IOCTL_ELEM_REMOVE:
@@ -1637,8 +1614,13 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		goto end;
 
 	if (handlers[i].cmd & IOC_OUT) {
-		if (copy_to_user((void __user *)arg, buf, size))
+		if (copy_to_user((void __user *)arg, buf, size)) {
 			err = -EFAULT;
+			if (cmd == SNDRV_CTL_IOCTL_ELEM_ADD) {
+				struct snd_ctl_elem_info *info = buf;
+				snd_ctl_remove_user_ctl(ctl, &info->id);
+			}
+		}
 	}
 end:
 	kfree(buf);
