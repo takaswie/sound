@@ -1323,14 +1323,11 @@ static int ctl_ioctl_elem_replace(struct snd_ctl_file *ctl_file, void *buf)
 	return ctl_ioctl_elem_add(ctl_file, info);
 }
 
-static int snd_ctl_elem_remove(struct snd_ctl_file *file,
-			       struct snd_ctl_elem_id __user *_id)
+static int ctl_ioctl_elem_remove(struct snd_ctl_file *file, void *buf)
 {
-	struct snd_ctl_elem_id id;
+	struct snd_ctl_elem_id *id = buf;
 
-	if (copy_from_user(&id, _id, sizeof(id)))
-		return -EFAULT;
-	return snd_ctl_remove_user_ctl(file, &id);
+	return snd_ctl_remove_user_ctl(file, id);
 }
 
 static int snd_ctl_subscribe_events(struct snd_ctl_file *file, int __user *ptr)
@@ -1521,6 +1518,7 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 		{ SNDRV_CTL_IOCTL_ELEM_UNLOCK,	ctl_ioctl_elem_unlock },
 		{ SNDRV_CTL_IOCTL_ELEM_ADD,	ctl_ioctl_elem_add },
 		{ SNDRV_CTL_IOCTL_ELEM_REPLACE,	ctl_ioctl_elem_replace },
+		{ SNDRV_CTL_IOCTL_ELEM_REMOVE,	ctl_ioctl_elem_remove },
 	};
 	struct snd_ctl_file *ctl;
 	struct snd_card *card;
@@ -1536,8 +1534,6 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd,
 	if (snd_BUG_ON(!card))
 		return -ENXIO;
 	switch (cmd) {
-	case SNDRV_CTL_IOCTL_ELEM_REMOVE:
-		return snd_ctl_elem_remove(ctl, argp);
 	case SNDRV_CTL_IOCTL_SUBSCRIBE_EVENTS:
 		return snd_ctl_subscribe_events(ctl, ip);
 	case SNDRV_CTL_IOCTL_POWER:
